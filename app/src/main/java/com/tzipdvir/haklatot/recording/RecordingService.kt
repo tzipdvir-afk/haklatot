@@ -72,7 +72,7 @@ class RecordingService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACTION_START -> if (!running) start()
+            ACTION_START -> if (!running) start(intent.getStringExtra(EXTRA_NAME).orEmpty())
             ACTION_STOP -> requestStop(StopReason.USER)
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
@@ -85,7 +85,7 @@ class RecordingService : Service() {
 
     // ---------- lifecycle ----------
 
-    private fun start() {
+    private fun start(baseName: String) {
         createChannels()
         elapsedMs = 0
         // Must happen right away, while the app is visible (Android 14+ rule for microphone services).
@@ -103,11 +103,11 @@ class RecordingService : Service() {
         stopReason = StopReason.USER
         batteryWarned = false
         storageWarned = false
-        RecordingState.update { RecorderStatus(recording = true, savedCount = it.savedCount) }
+        RecordingState.update { RecorderStatus(recording = true, name = RecordingsStore.cleanName(baseName).ifBlank { RecordingsStore.DEFAULT_BASE_NAME }, savedCount = it.savedCount) }
 
         registerSystemEvents()
         val bitrate = RecorderSettings(this).bitrateKbps
-        thread = Thread({ recordLoop(bitrate) }, "recorder").apply {
+        thread = Thread({ recordLoop(bitrate, baseName) }, "recorder").apply {
             priority = Thread.MAX_PRIORITY
             start()
         }
@@ -153,7 +153,7 @@ class RecordingService : Service() {
     // ---------- the recording loop ----------
 
     @SuppressLint("MissingPermission") // permission is checked by the screen before starting
-    private fun recordLoop(bitrate: Int) {
+    private fun recordLoop(bitrate: Int, baseName: String) {
         val store = RecordingsStore(this)
         val metaStore = RecordingMetaStore(this)
         val settings = RecorderSettings(this)
@@ -163,7 +163,7 @@ class RecordingService : Service() {
         val noiseHistogram = IntArray(101) // per-second level in dBFS, index = -dB (0..100)
 
         try {
-            uri = store.createPending(System.currentTimeMillis())
+            uri = store.createPending(System.currentTimeMillis(), baseName)
             id = ContentUris.parseId(uri)
             metaStore.put(id, RecordingMeta(bitrateKbps = bitrate)) // known even if we crash
 
@@ -503,14 +503,16 @@ class RecordingService : Service() {
         private const val ACTION_PAUSE = "pause"
         private const val ACTION_RESUME = "resume"
         private const val ACTION_KEEP_GOING = "keep_going"
+        private const val EXTRA_NAME = "name"
 
         private fun send(context: Context, action: String) {
             context.startService(Intent(context, RecordingService::class.java).setAction(action))
         }
 
-        fun start(context: Context) {
+        /** @param baseName e.g. "שיעור" or a free title; date and time are added automatically. */
+        fun start(context: Context, baseName: String) {
             ContextCompat.startForegroundService(
-                context, Intent(context, RecordingService::class.java).setAction(ACTION_START)
+                context, Intent(context, RecordingService::class.java).setAction(ACTION_START).putExtra(EXTRA_NAME, baseName)
             )
         }
 

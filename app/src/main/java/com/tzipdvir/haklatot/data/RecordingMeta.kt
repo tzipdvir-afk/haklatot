@@ -37,6 +37,10 @@ class RecordingMetaStore(context: Context) {
         }.getOrNull()
     }
 
+    fun remove(id: Long) {
+        prefs.edit().remove(id.toString()).apply()
+    }
+
     fun put(id: Long, meta: RecordingMeta) {
         val o = JSONObject().put("bitrate", meta.bitrateKbps)
         meta.noiseDb?.let { o.put("noise", it) }

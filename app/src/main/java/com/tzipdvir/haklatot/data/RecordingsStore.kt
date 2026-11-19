@@ -38,10 +38,11 @@ class RecordingsStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("recordings", Context.MODE_PRIVATE)
 
     /** Creates a new, pending MP3 entry and returns its Uri. */
-    fun createPending(startMillis: Long): Uri {
+    fun createPending(startMillis: Long, baseName: String): Uri {
         val stamp = SimpleDateFormat("dd.MM.yyyy – HH.mm", Locale.US).format(Date(startMillis))
+        val base = cleanName(baseName).ifBlank { DEFAULT_BASE_NAME }
         val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, "הקלטה – $stamp.mp3")
+            put(MediaStore.Audio.Media.DISPLAY_NAME, "$base – $stamp.mp3")
             put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
             put(MediaStore.Audio.Media.RELATIVE_PATH, RELATIVE_PATH)
             put(MediaStore.Audio.Media.IS_PENDING, 1)
@@ -50,6 +51,40 @@ class RecordingsStore(private val context: Context) {
         prefs.edit().putString(KEY_ACTIVE, uri.toString()).commit()
         return uri
     }
+
+    /**
+     * Renames the recording (also renames the file in "My Files").
+     * Throws SecurityException if Android requires the user's consent (see [writeConsentRequest]).
+     */
+    fun rename(rec: Recording, newTitle: String): Boolean {
+        val name = cleanName(newTitle)
+        if (name.isBlank()) return false
+        val values = ContentValues().apply { put(MediaStore.Audio.Media.DISPLAY_NAME, "$name.mp3") }
+        return resolver.update(rec.uri, values, null, null) > 0
+    }
+
+    /**
+     * Permanently deletes the recording and its extra data.
+     * Throws SecurityException if Android requires the user's consent (see [deleteConsentRequest]).
+     */
+    fun delete(rec: Recording): Boolean {
+        val ok = resolver.delete(rec.uri, null, null) > 0
+        if (ok) forgetExtras(rec.id)
+        return ok
+    }
+
+    /** Removes our own side data (waveform, meta) for a recording that no longer exists. */
+    fun forgetExtras(id: Long) {
+        Waveforms.file(context, id).delete()
+        RecordingMetaStore(context).remove(id)
+    }
+
+    /** Android 11+: system dialog asking the user to allow changing a file the app no longer "owns". */
+    fun writeConsentRequest(rec: Recording) =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) MediaStore.createWriteRequest(resolver, listOf(rec.uri)) else null
+
+    fun deleteConsentRequest(rec: Recording) =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) MediaStore.createDeleteRequest(resolver, listOf(rec.uri)) else null
 
     /** Marks the recording as finished: visible to other apps, duration gets indexed. */
     fun finish(uri: Uri) {
@@ -155,6 +190,11 @@ class RecordingsStore(private val context: Context) {
 
     companion object {
         const val DEFAULT_BITRATE_KBPS = 64
+        const val DEFAULT_BASE_NAME = "הקלטה"
+
+        /** Removes characters that are not allowed in file names and trims length. */
+        fun cleanName(s: String): String =
+            s.replace(Regex("[\\\\/:*?\"<>|\\n\\r\\t]"), " ").replace(Regex("\\s+"), " ").trim().take(80)
         private const val KEY_ACTIVE = "active_uri"
         private const val KEY_RECOVERED = "recovered_ids"
 

@@ -19,6 +19,17 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,7 +95,8 @@ fun PauseButton(paused: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun RecordingRow(rec: Recording, onClick: () -> Unit) {
+fun RecordingRow(rec: Recording, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+    var menuOpen by remember { mutableStateOf(false) }
     Card(
         Modifier
             .fillMaxWidth()
@@ -115,8 +127,83 @@ fun RecordingRow(rec: Recording, onClick: () -> Unit) {
             }
             Spacer(Modifier.width(10.dp))
             Text(formatDuration(rec.durationMs), fontSize = 17.sp, fontWeight = FontWeight.Medium)
+            Box {
+                TextButton(onClick = { menuOpen = true }) { Text("⋮", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("שנה שם", fontSize = 17.sp) }, onClick = { menuOpen = false; onRename() })
+                    DropdownMenuItem(
+                        text = { Text("מחק", fontSize = 17.sp, color = MaterialTheme.colorScheme.error) },
+                        onClick = { menuOpen = false; onDelete() },
+                    )
+                }
+            }
         }
     }
+}
+
+/** Quick type buttons + optional free name, shown before recording starts. */
+@Composable
+fun NameChooser(type: String?, customName: String, onType: (String?) -> Unit, onCustomName: (String) -> Unit) {
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf("שיעור", "פגישה", "הרצאה").forEach { t ->
+                FilterChip(
+                    selected = type == t,
+                    onClick = { onType(if (type == t) null else t) },
+                    label = { Text(t, fontSize = 16.sp) },
+                )
+            }
+        }
+        OutlinedTextField(
+            value = customName,
+            onValueChange = onCustomName,
+            singleLine = true,
+            placeholder = { Text("שם להקלטה (לא חובה)") },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        )
+    }
+}
+
+@Composable
+fun SearchField(query: String, onQuery: (String) -> Unit) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQuery,
+        singleLine = true,
+        placeholder = { Text("חיפוש לפי שם") },
+        trailingIcon = if (query.isNotEmpty()) {
+            { TextButton(onClick = { onQuery("") }) { Text("נקה") } }
+        } else null,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+@Composable
+fun RenameDialog(rec: Recording, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
+    var text by remember(rec.id) { mutableStateOf(rec.title) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("שינוי שם") },
+        text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
+        confirmButton = { Button(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("שמור") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ביטול") } },
+    )
+}
+
+@Composable
+fun DeleteDialog(rec: Recording, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("מחיקת הקלטה") },
+        text = { Text("למחוק את \"${rec.title}\" (${formatDuration(rec.durationMs)})?\n\nהמחיקה סופית – אי אפשר לשחזר.") },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            ) { Text("מחק") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("ביטול") } },
+    )
 }
 
 fun formatDuration(ms: Long): String {
@@ -129,7 +216,11 @@ fun formatDuration(ms: Long): String {
 
 fun formatSize(bytes: Long): String {
     val mb = bytes / (1024.0 * 1024.0)
-    return if (mb >= 1) "%.1f MB".format(Locale.US, mb) else "%d KB".format(bytes / 1024)
+    return when {
+        mb >= 1024 -> "%.1f GB".format(Locale.US, mb / 1024)
+        mb >= 1 -> "%.1f MB".format(Locale.US, mb)
+        else -> "%d KB".format(bytes / 1024)
+    }
 }
 
 fun formatDate(millis: Long): String = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.US).format(Date(millis))

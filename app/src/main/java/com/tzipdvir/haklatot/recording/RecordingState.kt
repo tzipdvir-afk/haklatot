@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 /** Live state of the recorder, shared between the service and the screen (same process). */
 data class RecorderStatus(
     val recording: Boolean = false,
+    /** Name chosen for the current recording (date/time are added to the file name). */
+    val name: String = "",
     val paused: Boolean = false,
     /** Android muted our microphone (phone / video call). Recording continues with silence. */
     val silencedByCall: Boolean = false,

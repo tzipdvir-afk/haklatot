@@ -11,6 +11,14 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import com.tzipdvir.haklatot.recording.RecorderSettings
 import com.tzipdvir.haklatot.ui.PauseButton
+import com.tzipdvir.haklatot.ui.NameChooser
+import com.tzipdvir.haklatot.ui.SearchField
+import com.tzipdvir.haklatot.ui.RenameDialog
+import com.tzipdvir.haklatot.ui.DeleteDialog
+import com.tzipdvir.haklatot.ui.formatSize
+import androidx.activity.result.IntentSenderRequest
+import android.os.Environment
+import android.os.StatFs
 import com.tzipdvir.haklatot.ui.SettingsScreen
 import android.media.AudioAttributes
 import android.media.MediaPlayer
@@ -96,6 +104,14 @@ class MainActivity : ComponentActivity() {
     private var askMicPermission by mutableStateOf(false)
     private var confirmCrash by mutableStateOf(false)
 
+    // Names, search, list management
+    private var nameType by mutableStateOf<String?>(null)
+    private var customName by mutableStateOf("")
+    private var query by mutableStateOf("")
+    private var freeBytes by mutableStateOf<Long?>(null)
+    private var renameTarget by mutableStateOf<Recording?>(null)
+    private var deleteTarget by mutableStateOf<Recording?>(null)
+
     // Settings
     private var showSettings by mutableStateOf(false)
     private var bitrate by mutableStateOf(RecorderSettings.DEFAULT_BITRATE)
@@ -109,7 +125,7 @@ class MainActivity : ComponentActivity() {
 
     private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result[Manifest.permission.RECORD_AUDIO] == true || hasMic()) {
-            RecordingService.start(this)
+            startRecording()
         } else {
             infoMessage = "בלי הרשאת מיקרופון אי אפשר להקליט. אפשר לאשר אותה בהגדרות הטלפון ← אפליקציות ← ההקלטות שלי ← הרשאות."
         }
@@ -170,6 +186,64 @@ class MainActivity : ComponentActivity() {
     private fun refreshList() {
         lifecycleScope.launch {
             recordings = withContext(Dispatchers.IO) { runCatching { store.list() }.getOrDefault(recordings) }
+            freeBytes = withContext(Dispatchers.IO) {
+                runCatching { StatFs(Environment.getExternalStorageDirectory().path).availableBytes }.getOrNull()
+            }
+        }
+    }
+
+    private fun startRecording() {
+        val name = customName.trim().ifBlank { nameType ?: "" }
+        RecordingService.start(this, name)
+        customName = ""
+        nameType = null
+    }
+
+    // ---------- rename / delete ----------
+
+    /** Runs after the user approves Android's consent dialog (only needed for files the app no longer "owns"). */
+    private var afterConsent: (() -> Unit)? = null
+
+    private val consentLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val action = afterConsent
+        afterConsent = null
+        if (r.resultCode == RESULT_OK) action?.invoke()
+    }
+
+    private fun askConsent(pending: android.app.PendingIntent?, then: () -> Unit) {
+        if (pending == null) {
+            infoMessage = "אנדרואיד לא מאפשר את הפעולה על הקובץ הזה."
+            return
+        }
+        afterConsent = then
+        consentLauncher.launch(IntentSenderRequest.Builder(pending.intentSender).build())
+    }
+
+    private fun doRename(rec: Recording, newTitle: String) {
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { store.rename(rec, newTitle) } }
+            val error = result.exceptionOrNull()
+            when {
+                error is SecurityException -> askConsent(store.writeConsentRequest(rec)) { doRename(rec, newTitle) }
+                error != null || result.getOrNull() != true -> infoMessage = "לא הצלחתי לשנות את השם."
+                else -> refreshList()
+            }
+        }
+    }
+
+    private fun doDelete(rec: Recording) {
+        if (nowPlaying?.id == rec.id) closePlayer()
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) { runCatching { store.delete(rec) } }
+            val error = result.exceptionOrNull()
+            when {
+                // The system dialog itself deletes the file when the user approves.
+                error is SecurityException -> askConsent(store.deleteConsentRequest(rec)) {
+                    store.forgetExtras(rec.id); refreshList()
+                }
+                error != null || result.getOrNull() != true -> infoMessage = "לא הצלחתי למחוק את ההקלטה."
+                else -> refreshList()
+            }
         }
     }
 
@@ -206,7 +280,7 @@ class MainActivity : ComponentActivity() {
         } else if (hasMic()) {
             closePlayer()
             requestNotificationsIfNeeded()
-            RecordingService.start(this)
+            startRecording()
         } else {
             askMicPermission = true
         }
@@ -399,7 +473,12 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     status.warning?.let { if (status.recording) Text(it, fontSize = 15.sp, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-                    Spacer(Modifier.height(8.dp))
+                    if (status.recording) {
+                        Text("שם: ${status.name}", fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
+                    } else {
+                        NameChooser(nameType, customName, onType = { nameType = it }, onCustomName = { customName = it })
+                    }
+                    Spacer(Modifier.height(10.dp))
                     RecordButton(status.recording) { onRecordPressed(status.recording) }
                     if (status.recording) {
                         Spacer(Modifier.height(12.dp))
@@ -428,11 +507,34 @@ class MainActivity : ComponentActivity() {
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    if (recordings.isNotEmpty()) {
+                        Text(
+                            "סה\"כ ${formatSize(recordings.sumOf { it.sizeBytes })}" +
+                                (freeBytes?.let { " · נשארו ${formatSize(it)} פנויים בטלפון" } ?: ""),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        SearchField(query) { query = it }
+                    }
                     Spacer(Modifier.height(4.dp))
                 }
             }
 
-            items(recordings, key = { it.id }) { rec -> RecordingRow(rec) { play(rec) } }
+            val shown = if (query.isBlank()) recordings
+            else recordings.filter { it.title.contains(query.trim(), ignoreCase = true) }
+            if (query.isNotBlank() && shown.isEmpty()) {
+                item { Text("לא נמצאו הקלטות בשם הזה", fontSize = 16.sp, modifier = Modifier.padding(12.dp)) }
+            }
+            items(shown, key = { it.id }) { rec ->
+                RecordingRow(
+                    rec,
+                    onClick = { play(rec) },
+                    onRename = { renameTarget = rec },
+                    onDelete = { deleteTarget = rec },
+                )
+            }
 
             item {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(vertical = 18.dp)) {
@@ -458,6 +560,13 @@ class MainActivity : ComponentActivity() {
                 onClose = { closePlayer() },
             )
         }
+        }
+
+        renameTarget?.let { rec ->
+            RenameDialog(rec, onConfirm = { renameTarget = null; doRename(rec, it) }, onDismiss = { renameTarget = null })
+        }
+        deleteTarget?.let { rec ->
+            DeleteDialog(rec, onConfirm = { deleteTarget = null; doDelete(rec) }, onDismiss = { deleteTarget = null })
         }
 
         if (askBattery) {
