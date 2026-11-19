@@ -77,6 +77,13 @@ fun RecordButton(recording: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
+fun PauseButton(paused: Boolean, onClick: () -> Unit) {
+    androidx.compose.material3.OutlinedButton(onClick = onClick, modifier = Modifier.height(52.dp)) {
+        Text(if (paused) "המשך הקלטה" else "השהה", fontSize = 18.sp)
+    }
+}
+
+@Composable
 fun RecordingRow(rec: Recording, onClick: () -> Unit) {
     Card(
         Modifier
@@ -97,6 +104,13 @@ fun RecordingRow(rec: Recording, onClick: () -> Unit) {
                 )
                 if (rec.recovered) {
                     Text("שוחזרה אחרי קריסה", fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+                }
+                rec.stopReason?.label?.let {
+                    Text(it, fontSize = 13.sp, color = MaterialTheme.colorScheme.secondary, fontWeight = FontWeight.SemiBold)
+                }
+                rec.noiseDb?.let {
+                    // Temporary diagnostic, for choosing the silence threshold.
+                    Text("רעש רקע: $it dB", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f))
                 }
             }
             Spacer(Modifier.width(10.dp))

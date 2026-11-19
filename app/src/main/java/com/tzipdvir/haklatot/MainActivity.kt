@@ -1,7 +1,17 @@
 package com.tzipdvir.haklatot
 
 import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Row
+import com.tzipdvir.haklatot.recording.RecorderSettings
+import com.tzipdvir.haklatot.ui.PauseButton
+import com.tzipdvir.haklatot.ui.SettingsScreen
 import android.media.AudioAttributes
 import android.media.MediaPlayer
 import android.os.Build
@@ -86,8 +96,16 @@ class MainActivity : ComponentActivity() {
     private var askMicPermission by mutableStateOf(false)
     private var confirmCrash by mutableStateOf(false)
 
+    // Settings
+    private var showSettings by mutableStateOf(false)
+    private var bitrate by mutableStateOf(RecorderSettings.DEFAULT_BITRATE)
+    private var autoStop by mutableStateOf(true)
+    private var batteryOk by mutableStateOf(true)
+    private var askBattery by mutableStateOf(false)
+
     private lateinit var installer: UpdateInstaller
     private lateinit var store: RecordingsStore
+    private lateinit var settings: RecorderSettings
 
     private val permissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
         if (result[Manifest.permission.RECORD_AUDIO] == true || hasMic()) {
@@ -101,6 +119,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         installer = UpdateInstaller(applicationContext)
         store = RecordingsStore(applicationContext)
+        settings = RecorderSettings(applicationContext)
+        bitrate = settings.bitrateKbps
+        autoStop = settings.autoStopOnSilence
 
         // A recording that was cut off (crash, phone restart, forced stop) is closed and kept.
         if (!RecordingState.status.value.recording) {
@@ -115,7 +136,25 @@ class MainActivity : ComponentActivity() {
         setContent {
             HaklatotTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    HomeScreen()
+                    if (showSettings) {
+                        BackHandler { showSettings = false }
+                        val status by RecordingState.status.collectAsState()
+                        Column(Modifier.safeDrawingPadding()) {
+                            SettingsScreen(
+                                bitrate = bitrate,
+                                autoStop = autoStop,
+                                recording = status.recording,
+                                batteryOk = batteryOk,
+                                onBitrate = { bitrate = it; settings.bitrateKbps = it },
+                                onAutoStop = { autoStop = it; settings.autoStopOnSilence = it },
+                                onBatteryRequest = { requestBatteryExemption() },
+                                onOpenAppSettings = { openAppSettings() },
+                                onBack = { showSettings = false },
+                            )
+                        }
+                    } else {
+                        HomeScreen()
+                    }
                 }
             }
         }
@@ -123,6 +162,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        batteryOk = isBatteryOk()
         checkForUpdate(force = false)
         refreshList()
     }
@@ -136,10 +176,33 @@ class MainActivity : ComponentActivity() {
     private fun hasMic() =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
 
+    // ---------- settings & battery ----------
+
+    private fun isBatteryOk() =
+        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    @SuppressLint("BatteryLife") // a personal recorder that must keep running for hours; user confirms
+    private fun requestBatteryExemption() {
+        settings.batteryExplained = true
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        }.onFailure { openAppSettings() }
+    }
+
+    private fun openAppSettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+        }
+    }
+
     private fun onRecordPressed(recording: Boolean) {
         infoMessage = null
         if (recording) {
             RecordingService.stop(this)
+        } else if (!batteryOk && !settings.batteryExplained) {
+            askBattery = true
         } else if (hasMic()) {
             closePlayer()
             requestNotificationsIfNeeded()
@@ -269,7 +332,7 @@ class MainActivity : ComponentActivity() {
         val status by RecordingState.status.collectAsState()
 
         LaunchedEffect(status.savedCount) { if (status.savedCount > 0) refreshList() }
-        LaunchedEffect(status.error) { status.error?.let { infoMessage = "ההקלטה נעצרה: $it" } }
+        LaunchedEffect(status.endMessage) { status.endMessage?.let { infoMessage = it } }
         LaunchedEffect(isPlaying) {
             while (isPlaying) {
                 player?.let { playPosMs = it.currentPosition.toLong() }
@@ -288,24 +351,63 @@ class MainActivity : ComponentActivity() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Spacer(Modifier.height(8.dp))
                     update?.let { UpdateBanner(it, status.recording) }
-                    Text(
-                        "ההקלטות שלי",
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "ההקלטות שלי",
+                            fontSize = 28.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { showSettings = true }) { Text("הגדרות", fontSize = 17.sp) }
+                    }
+                    if (!batteryOk && !status.recording) {
+                        Card(
+                            Modifier.fillMaxWidth().padding(top = 6.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer),
+                        ) {
+                            Row(Modifier.padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("כדי שהקלטות ארוכות לא ייעצרו – מומלץ לאשר פעולה ברקע.", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { requestBatteryExemption() }) { Text("אשר") }
+                            }
+                        }
+                    }
                     Spacer(Modifier.height(12.dp))
                     Text(
                         formatDuration(status.elapsedMs),
                         fontSize = 46.sp,
                         fontWeight = FontWeight.Light,
-                        color = if (status.recording) RecordRed else MaterialTheme.colorScheme.onBackground,
+                        color = if (status.recording && !status.paused) RecordRed else MaterialTheme.colorScheme.onBackground,
                     )
-                    LevelMeter(status.levels, status.recording, Modifier.padding(vertical = 8.dp))
+                    val stateLine = when {
+                        !status.recording -> null
+                        status.paused -> "ההקלטה מושהית"
+                        status.silencedByCall -> "המיקרופון מושתק בגלל שיחה – ההקלטה תמשיך אוטומטית אחריה"
+                        else -> "מקליט…"
+                    }
+                    stateLine?.let { Text(it, fontSize = 16.sp, textAlign = TextAlign.Center) }
+                    LevelMeter(status.levels, status.recording && !status.paused, Modifier.padding(vertical = 8.dp))
+                    if (status.silenceWarning) {
+                        Card(
+                            Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                        ) {
+                            Column(Modifier.padding(14.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("לא נקלט קול 5 דקות. ההקלטה תיעצר ותישמר בעוד דקה.", fontSize = 16.sp, textAlign = TextAlign.Center)
+                                Button(onClick = { RecordingService.keepGoing(this@MainActivity) }) { Text("המשך להקליט") }
+                            }
+                        }
+                    }
+                    status.warning?.let { if (status.recording) Text(it, fontSize = 15.sp, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
                     Spacer(Modifier.height(8.dp))
                     RecordButton(status.recording) { onRecordPressed(status.recording) }
-                    Spacer(Modifier.height(14.dp))
+                    if (status.recording) {
+                        Spacer(Modifier.height(12.dp))
+                        PauseButton(status.paused) {
+                            if (status.paused) RecordingService.resume(this@MainActivity) else RecordingService.pause(this@MainActivity)
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
                     if (status.recording) {
                         TextButton(onClick = { confirmCrash = true }) {
                             Text("סימולציית קריסה (בדיקה)", color = MaterialTheme.colorScheme.error)
@@ -356,6 +458,31 @@ class MainActivity : ComponentActivity() {
                 onClose = { closePlayer() },
             )
         }
+        }
+
+        if (askBattery) {
+            AlertDialog(
+                onDismissRequest = { askBattery = false },
+                title = { Text("לפני ההקלטה הראשונה") },
+                text = {
+                    Text(
+                        "טלפונים של סמסונג חוסכים סוללה בכך שהם עוצרים אפליקציות שפועלות ברקע – " +
+                            "וזה עלול לעצור הקלטה ארוכה כשהמסך כבוי.\n\n" +
+                            "כדי למנוע את זה, אשר לאפליקציה לפעול ברקע. בחלון שייפתח לחץ \"אפשר\".\n\n" +
+                            "אחר כך לחץ שוב \"הקלט\"."
+                    )
+                },
+                confirmButton = {
+                    Button(onClick = { askBattery = false; requestBatteryExemption() }) { Text("אשר עכשיו") }
+                },
+                dismissButton = {
+                    TextButton(onClick = {
+                        askBattery = false
+                        settings.batteryExplained = true
+                        onRecordPressed(false)
+                    }) { Text("לא עכשיו, הקלט") }
+                },
+            )
         }
 
         if (askMicPermission) {

@@ -21,6 +21,9 @@ data class Recording(
     val durationMs: Long,
     val sizeBytes: Long,
     val recovered: Boolean,
+    /** Background noise in dBFS (temporary diagnostic for choosing the silence threshold). */
+    val noiseDb: Int? = null,
+    val stopReason: StopReason? = null,
 )
 
 /**
@@ -35,10 +38,10 @@ class RecordingsStore(private val context: Context) {
     private val prefs = context.getSharedPreferences("recordings", Context.MODE_PRIVATE)
 
     /** Creates a new, pending MP3 entry and returns its Uri. */
-    fun createPending(startMillis: Long, suffix: String): Uri {
+    fun createPending(startMillis: Long): Uri {
         val stamp = SimpleDateFormat("dd.MM.yyyy – HH.mm", Locale.US).format(Date(startMillis))
         val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, "הקלטה – $stamp$suffix.mp3")
+            put(MediaStore.Audio.Media.DISPLAY_NAME, "הקלטה – $stamp.mp3")
             put(MediaStore.Audio.Media.MIME_TYPE, "audio/mpeg")
             put(MediaStore.Audio.Media.RELATIVE_PATH, RELATIVE_PATH)
             put(MediaStore.Audio.Media.IS_PENDING, 1)
@@ -107,12 +110,20 @@ class RecordingsStore(private val context: Context) {
             val dateCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val durCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+            val metaStore = RecordingMetaStore(context)
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 val size = c.getLong(sizeCol)
-                var duration = c.getLong(durCol)
-                if (duration <= 0) duration = size * 8 / DEFAULT_BITRATE_KBPS // CBR estimate (ms)
+                val meta = metaStore.get(id)
+                // Constant-bitrate MP3: exact duration from file size (also right after a crash).
+                val duration = when {
+                    meta != null -> size * 8 / meta.bitrateKbps
+                    c.getLong(durCol) > 0 -> c.getLong(durCol)
+                    else -> size * 8 / DEFAULT_BITRATE_KBPS
+                }
                 result += Recording(
+                    noiseDb = meta?.noiseDb,
+                    stopReason = meta?.stopReason,
                     id = id,
                     uri = ContentUris.withAppendedId(collection, id),
                     title = c.getString(nameCol).removeSuffix(".mp3"),
