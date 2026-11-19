@@ -67,24 +67,23 @@ class RecordingService : Service() {
 
         running = true
         RecordingState.update { RecorderStatus(recording = true, savedCount = it.savedCount) }
-        val source = RecorderSettings.micSource(this)
-        thread = Thread({ recordLoop(source, startWall) }, "recorder").apply {
+        thread = Thread({ recordLoop(RecorderSettings.MIC_SOURCE, startWall) }, "recorder").apply {
             priority = Thread.MAX_PRIORITY
             start()
         }
-        Log.i(TAG, "Recording started (source=$source) at elapsed=$startElapsed")
+        Log.i(TAG, "Recording started at elapsed=$startElapsed")
     }
 
     @SuppressLint("MissingPermission") // permission is checked by the screen before starting
-    private fun recordLoop(source: MicSource, startWall: Long) {
+    private fun recordLoop(micSource: Int, startWall: Long) {
         val store = RecordingsStore(this)
         var uri: Uri? = null
         var errorMsg: String? = null
         try {
-            uri = store.createPending(startWall, source.fileSuffix)
+            uri = store.createPending(startWall, "")
             val minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
             val record = AudioRecord(
-                source.androidSource, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
+                micSource, SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT, maxOf(minBuf, SAMPLE_RATE * 2) * 2, // >= 2 s of buffer
             )
             check(record.state == AudioRecord.STATE_INITIALIZED) { "המיקרופון לא זמין" }

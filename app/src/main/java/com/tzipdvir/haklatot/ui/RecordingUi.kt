@@ -17,7 +17,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,7 +30,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tzipdvir.haklatot.data.Recording
-import com.tzipdvir.haklatot.recording.MicSource
 import com.tzipdvir.haklatot.recording.RecordingState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,21 +73,6 @@ fun RecordButton(recording: Boolean, onClick: () -> Unit) {
         ),
     ) {
         Text(if (recording) "עצור\nושמור" else "הקלט", fontSize = 24.sp, fontWeight = FontWeight.Bold, lineHeight = 28.sp)
-    }
-}
-
-@Composable
-fun MicSourceChooser(selected: MicSource, enabled: Boolean, onSelect: (MicSource) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("מקור קול (בדיקה):", fontSize = 14.sp)
-        MicSource.entries.forEach { s ->
-            FilterChip(
-                selected = s == selected,
-                enabled = enabled,
-                onClick = { onSelect(s) },
-                label = { Text(s.label) },
-            )
-        }
     }
 }
 

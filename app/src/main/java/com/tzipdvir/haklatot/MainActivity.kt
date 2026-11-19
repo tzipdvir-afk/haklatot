@@ -1,9 +1,9 @@
 package com.tzipdvir.haklatot
 
 import android.Manifest
-import android.content.ActivityNotFoundException
-import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
 import android.os.Process
@@ -46,13 +46,11 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.tzipdvir.haklatot.data.Recording
 import com.tzipdvir.haklatot.data.RecordingsStore
-import com.tzipdvir.haklatot.recording.MicSource
-import com.tzipdvir.haklatot.recording.RecorderSettings
 import com.tzipdvir.haklatot.recording.RecordingService
 import com.tzipdvir.haklatot.recording.RecordingState
 import com.tzipdvir.haklatot.ui.HaklatotTheme
 import com.tzipdvir.haklatot.ui.LevelMeter
-import com.tzipdvir.haklatot.ui.MicSourceChooser
+import com.tzipdvir.haklatot.ui.PlayerBar
 import com.tzipdvir.haklatot.ui.RecordButton
 import com.tzipdvir.haklatot.ui.RecordRed
 import com.tzipdvir.haklatot.ui.RecordingRow
@@ -63,6 +61,7 @@ import com.tzipdvir.haklatot.update.UpdateChecker
 import com.tzipdvir.haklatot.update.UpdateInfo
 import com.tzipdvir.haklatot.update.UpdateInstaller
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -76,7 +75,13 @@ class MainActivity : ComponentActivity() {
 
     // Recordings
     private var recordings by mutableStateOf<List<Recording>>(emptyList())
-    private var micSource by mutableStateOf(MicSource.NORMAL)
+
+    // Built-in player
+    private var player: MediaPlayer? = null
+    private var nowPlaying by mutableStateOf<Recording?>(null)
+    private var isPlaying by mutableStateOf(false)
+    private var playPosMs by mutableStateOf(0L)
+    private var playDurMs by mutableStateOf(0L)
     private var infoMessage by mutableStateOf<String?>(null)
     private var askMicPermission by mutableStateOf(false)
     private var confirmCrash by mutableStateOf(false)
@@ -96,7 +101,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         installer = UpdateInstaller(applicationContext)
         store = RecordingsStore(applicationContext)
-        micSource = RecorderSettings.micSource(this)
 
         // A recording that was cut off (crash, phone restart, forced stop) is closed and kept.
         if (!RecordingState.status.value.recording) {
@@ -137,6 +141,7 @@ class MainActivity : ComponentActivity() {
         if (recording) {
             RecordingService.stop(this)
         } else if (hasMic()) {
+            closePlayer()
             requestNotificationsIfNeeded()
             RecordingService.start(this)
         } else {
@@ -160,16 +165,77 @@ class MainActivity : ComponentActivity() {
 
     private val notificationRequest = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
+    // ---------- built-in player ----------
+
     private fun play(rec: Recording) {
-        try {
-            startActivity(
-                Intent(Intent.ACTION_VIEW)
-                    .setDataAndType(rec.uri, "audio/mpeg")
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            )
-        } catch (_: ActivityNotFoundException) {
-            infoMessage = "לא נמצא בטלפון נגן שיכול לפתוח את הקובץ."
+        if (RecordingState.status.value.recording) {
+            infoMessage = "אפשר להאזין אחרי שההקלטה תסתיים."
+            return
         }
+        closePlayer()
+        nowPlaying = rec
+        playPosMs = 0
+        playDurMs = rec.durationMs
+        player = MediaPlayer().apply {
+            setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            setOnPreparedListener {
+                if (it.duration > 0) playDurMs = it.duration.toLong()
+                it.start()
+                isPlaying = true
+            }
+            setOnCompletionListener { isPlaying = false; playPosMs = playDurMs }
+            setOnErrorListener { _, _, _ ->
+                infoMessage = "לא הצלחתי לנגן את ההקלטה."
+                closePlayer()
+                true
+            }
+            try {
+                setDataSource(applicationContext, rec.uri)
+                prepareAsync()
+            } catch (e: Exception) {
+                infoMessage = "לא הצלחתי לפתוח את ההקלטה."
+                closePlayer()
+            }
+        }
+    }
+
+    private fun togglePlay() {
+        val p = player ?: return
+        if (p.isPlaying) {
+            p.pause(); isPlaying = false
+        } else {
+            if (playPosMs >= playDurMs - 300) p.seekTo(0)
+            p.start(); isPlaying = true
+        }
+    }
+
+    private fun seekTo(ms: Long) {
+        val p = player ?: return
+        val target = ms.coerceIn(0, playDurMs)
+        p.seekTo(target.toInt())
+        playPosMs = target
+    }
+
+    private fun closePlayer() {
+        player?.let { runCatching { it.stop() }; it.release() }
+        player = null
+        nowPlaying = null
+        isPlaying = false
+    }
+
+    override fun onStop() {
+        super.onStop()
+        player?.let { if (it.isPlaying) { it.pause(); isPlaying = false } }
+    }
+
+    override fun onDestroy() {
+        closePlayer()
+        super.onDestroy()
     }
 
     // ---------- updates ----------
@@ -204,11 +270,17 @@ class MainActivity : ComponentActivity() {
 
         LaunchedEffect(status.savedCount) { if (status.savedCount > 0) refreshList() }
         LaunchedEffect(status.error) { status.error?.let { infoMessage = "ההקלטה נעצרה: $it" } }
+        LaunchedEffect(isPlaying) {
+            while (isPlaying) {
+                player?.let { playPosMs = it.currentPosition.toLong() }
+                delay(200)
+            }
+        }
 
+        Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         LazyColumn(
             Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
+                .weight(1f)
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -234,10 +306,6 @@ class MainActivity : ComponentActivity() {
                     Spacer(Modifier.height(8.dp))
                     RecordButton(status.recording) { onRecordPressed(status.recording) }
                     Spacer(Modifier.height(14.dp))
-                    MicSourceChooser(micSource, enabled = !status.recording) {
-                        micSource = it
-                        RecorderSettings.setMicSource(this@MainActivity, it)
-                    }
                     if (status.recording) {
                         TextButton(onClick = { confirmCrash = true }) {
                             Text("סימולציית קריסה (בדיקה)", color = MaterialTheme.colorScheme.error)
@@ -275,6 +343,19 @@ class MainActivity : ComponentActivity() {
                     checkMessage?.let { Text(it, fontSize = 14.sp) }
                 }
             }
+        }
+        nowPlaying?.let { rec ->
+            PlayerBar(
+                title = rec.title,
+                isPlaying = isPlaying,
+                positionMs = playPosMs,
+                durationMs = playDurMs,
+                onPlayPause = { togglePlay() },
+                onSeek = { seekTo(it) },
+                onSkip = { seekTo(playPosMs + it) },
+                onClose = { closePlayer() },
+            )
+        }
         }
 
         if (askMicPermission) {
