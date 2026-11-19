@@ -1,4 +1,4 @@
 Unmodified copy of the encoder library from the official LAME 3.100 release
 (https://lame.sourceforge.io, lame-3.100.tar.gz,
 SHA-256 ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e).
-Only libmp3lame/*.c, *.h and include/lame.h are included. License: LGPL (see COPYING).
+Only libmp3lame/*.c, *.h, libmp3lame/vector/*.h and include/lame.h are included. License: LGPL (see COPYING).
