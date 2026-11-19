@@ -29,6 +29,18 @@ android {
         targetSdk = 35
         versionCode = versionProps.getProperty("VERSION_CODE").trim().toInt()
         versionName = versionProps.getProperty("VERSION_NAME").trim()
+        ndk {
+            // Samsung Galaxy A26 and all current phones are 64-bit ARM
+            abiFilters += "arm64-v8a"
+        }
+    }
+
+    // LAME MP3 encoder, compiled from source (app/src/main/cpp)
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     val storePath = signingValue("HAKLATOT_KEYSTORE", "storeFile")

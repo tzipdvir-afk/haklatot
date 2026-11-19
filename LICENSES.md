@@ -4,6 +4,6 @@
 |---|---|---|
 | AndroidX, Jetpack Compose, Material 3 | Apache License 2.0 | ספריות של Google |
 | Kotlin | Apache License 2.0 | |
-| LAME (קידוד MP3) | LGPL 2.0 | יתווסף בשלב 1. מקומפל מקוד המקור הרשמי, עם עטיפת JNI משלנו. מתאים לאפליקציה אישית. |
+| LAME 3.100 (קידוד MP3) | LGPL 2.0 | קוד המקור הרשמי ללא שינוי, ב-`app/src/main/cpp/lame` (פרטים ב-`SOURCE.txt`, רישיון ב-`COPYING`). מקומפל כספרייה דינמית נפרדת (`libmp3encoder.so`) עם עטיפת JNI משלנו. |
 
 תמונת האייקון נוצרה עבור הפרויקט (Google Flow).

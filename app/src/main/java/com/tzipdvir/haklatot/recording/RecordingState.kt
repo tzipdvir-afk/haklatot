@@ -1,0 +1,30 @@
+package com.tzipdvir.haklatot.recording
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+/** Live state of the recorder, shared between the service and the screen (same process). */
+data class RecorderStatus(
+    val recording: Boolean = false,
+    val elapsedMs: Long = 0,
+    /** Recent sound levels 0..1, oldest first, for the moving bars. */
+    val levels: List<Float> = emptyList(),
+    val error: String? = null,
+    /** Increases every time a recording is saved, so the list knows to refresh. */
+    val savedCount: Int = 0,
+)
+
+object RecordingState {
+    const val LEVEL_HISTORY = 60
+
+    private val _status = MutableStateFlow(RecorderStatus())
+    val status: StateFlow<RecorderStatus> = _status.asStateFlow()
+
+    fun update(transform: (RecorderStatus) -> RecorderStatus) {
+        while (true) {
+            val old = _status.value
+            if (_status.compareAndSet(old, transform(old))) return
+        }
+    }
+}
