@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Sampled from the icon artwork background -->
+    <color name="icon_background">#074C9F</color>
+    <color name="window_light">#FFF8F9FF</color>
+    <color name="window_dark">#FF111318</color>
+</resources>

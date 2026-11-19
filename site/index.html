@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ההקלטות שלי – הורדה</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="icon-32.png" sizes="32x32">
+<link rel="apple-touch-icon" href="icon-180.png">
+<style>
+  :root { --bg:#f3f6fc; --card:#fff; --fg:#14213d; --muted:#55607a; --primary:#074C9F; --accent:#E8730C; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111318; --card:#1b1f27; --fg:#e6e9f0; --muted:#a3abbd; --primary:#a9c7ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font-family: system-ui, "Segoe UI", Arial, sans-serif; line-height:1.55; }
+  main { max-width:480px; margin:0 auto; padding:32px 16px 48px; text-align:center; }
+  img.icon { width:120px; height:120px; border-radius:28%; box-shadow:0 6px 20px rgba(0,0,0,.18); }
+  h1 { margin:18px 0 4px; font-size:30px; color:var(--primary); }
+  .ver { color:var(--muted); margin:0 0 18px; }
+  .btn { display:block; background:var(--accent); color:#fff; text-decoration:none; font-size:21px; font-weight:700; padding:16px; border-radius:14px; }
+  .card { background:var(--card); border-radius:14px; padding:16px 18px; margin-top:22px; text-align:right; }
+  .card h2 { font-size:18px; margin:0 0 8px; }
+  ol { margin:0; padding-inline-start:22px; } li { margin:6px 0; }
+  .notes { white-space:pre-line; }
+  footer { margin-top:28px; font-size:13px; color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <img class="icon" src="icon-192.png" alt="">
+  <h1>ההקלטות שלי</h1>
+  <p class="ver" id="ver">&nbsp;</p>
+  <a class="btn" id="dl" href="https://github.com/tzipdvir-afk/haklatot/releases/latest/download/haklatot.apk">הורד והתקן</a>
+
+  <div class="card" id="notesCard" hidden>
+    <h2>מה חדש</h2>
+    <div class="notes" id="notes"></div>
+  </div>
+
+  <div class="card">
+    <h2>התקנה בפעם הראשונה</h2>
+    <ol>
+      <li>לחץ "הורד והתקן". אם הדפדפן שואל אם להוריד את הקובץ – אשר.</li>
+      <li>כשההורדה מסתיימת, לחץ על הקובץ (או על "פתח").</li>
+      <li>אם מופיעה הודעה שההתקנה ממקור זה חסומה – לחץ "הגדרות", הפעל את המתג "אפשר ממקור זה", וחזור.</li>
+      <li>לחץ "התקן".</li>
+    </ol>
+    <p style="margin:10px 0 0">מכאן והלאה, כשיש גרסה חדשה היא תופיע בתוך האפליקציה עצמה.</p>
+  </div>
+
+  <footer>אפליקציה אישית. ההקלטות נשמרות רק בטלפון.</footer>
+</main>
+<script>
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(r => r.json())
+    .then(v => {
+      document.getElementById('ver').textContent = 'גרסה ' + v.versionName;
+      document.getElementById('dl').href = v.apkUrl;
+      if (v.notes) {
+        document.getElementById('notes').textContent = v.notes;
+        document.getElementById('notesCard').hidden = false;
+      }
+    })
+    .catch(() => {});
+</script>
+</body>
+</html>

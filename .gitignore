@@ -1,0 +1,14 @@
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Signing key and passwords must NEVER be committed (the repository is public)
+keystore.properties
+*.jks
+*.keystore
+*.b64
