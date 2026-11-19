@@ -186,9 +186,9 @@ class MainActivity : ComponentActivity() {
             setOnPreparedListener {
                 if (it.duration > 0) playDurMs = it.duration.toLong()
                 it.start()
-                isPlaying = true
+                this@MainActivity.isPlaying = true
             }
-            setOnCompletionListener { isPlaying = false; playPosMs = playDurMs }
+            setOnCompletionListener { this@MainActivity.isPlaying = false; playPosMs = playDurMs }
             setOnErrorListener { _, _, _ ->
                 infoMessage = "לא הצלחתי לנגן את ההקלטה."
                 closePlayer()
