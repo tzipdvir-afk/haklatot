@@ -68,7 +68,8 @@ import com.tzipdvir.haklatot.recording.RecordingService
 import com.tzipdvir.haklatot.recording.RecordingState
 import com.tzipdvir.haklatot.ui.HaklatotTheme
 import com.tzipdvir.haklatot.ui.LevelMeter
-import com.tzipdvir.haklatot.ui.PlayerBar
+import com.tzipdvir.haklatot.ui.PlaybackScreen
+import com.tzipdvir.haklatot.data.Waveforms
 import com.tzipdvir.haklatot.ui.RecordButton
 import com.tzipdvir.haklatot.ui.RecordRed
 import com.tzipdvir.haklatot.ui.RecordingRow
@@ -100,6 +101,8 @@ class MainActivity : ComponentActivity() {
     private var isPlaying by mutableStateOf(false)
     private var playPosMs by mutableStateOf(0L)
     private var playDurMs by mutableStateOf(0L)
+    private var playSpeed by mutableStateOf(1f)
+    private var waveform by mutableStateOf<ByteArray?>(null)
     private var infoMessage by mutableStateOf<String?>(null)
     private var askMicPermission by mutableStateOf(false)
     private var confirmCrash by mutableStateOf(false)
@@ -138,6 +141,7 @@ class MainActivity : ComponentActivity() {
         settings = RecorderSettings(applicationContext)
         bitrate = settings.bitrateKbps
         autoStop = settings.autoStopOnSilence
+        playSpeed = getSharedPreferences("player", MODE_PRIVATE).getFloat("speed", 1f)
 
         // A recording that was cut off (crash, phone restart, forced stop) is closed and kept.
         if (!RecordingState.status.value.recording) {
@@ -152,7 +156,34 @@ class MainActivity : ComponentActivity() {
         setContent {
             HaklatotTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    if (showSettings) {
+                    LaunchedEffect(isPlaying) {
+                        while (isPlaying) {
+                            player?.let { playPosMs = it.currentPosition.toLong() }
+                            delay(200)
+                        }
+                    }
+                    val open = nowPlaying
+                    if (open != null) {
+                        BackHandler { closePlayer() }
+                        Column(Modifier.safeDrawingPadding()) {
+                            PlaybackScreen(
+                                rec = open,
+                                waveform = waveform,
+                                isPlaying = isPlaying,
+                                positionMs = playPosMs,
+                                durationMs = playDurMs,
+                                speed = playSpeed,
+                                onPlayPause = { togglePlay() },
+                                onSeek = { seekTo(it) },
+                                onSkip = { seekTo(playPosMs + it) },
+                                onSpeed = { setSpeed(it) },
+                                onRename = { renameTarget = open },
+                                onDelete = { deleteTarget = open },
+                                onBack = { closePlayer() },
+                            )
+                        }
+                        ManageDialogs()
+                    } else if (showSettings) {
                         BackHandler { showSettings = false }
                         val status by RecordingState.status.collectAsState()
                         Column(Modifier.safeDrawingPadding()) {
@@ -186,6 +217,8 @@ class MainActivity : ComponentActivity() {
     private fun refreshList() {
         lifecycleScope.launch {
             recordings = withContext(Dispatchers.IO) { runCatching { store.list() }.getOrDefault(recordings) }
+            // Keep the open playback screen in sync (e.g. after renaming).
+            nowPlaying?.let { cur -> recordings.firstOrNull { it.id == cur.id }?.let { nowPlaying = it } }
             freeBytes = withContext(Dispatchers.IO) {
                 runCatching { StatFs(Environment.getExternalStorageDirectory().path).availableBytes }.getOrNull()
             }
@@ -313,6 +346,11 @@ class MainActivity : ComponentActivity() {
         nowPlaying = rec
         playPosMs = 0
         playDurMs = rec.durationMs
+        waveform = null
+        lifecycleScope.launch {
+            val w = withContext(Dispatchers.Default) { runCatching { Waveforms.load(applicationContext, rec) }.getOrNull() }
+            if (nowPlaying?.id == rec.id) waveform = w ?: ByteArray(0)
+        }
         player = MediaPlayer().apply {
             setAudioAttributes(
                 AudioAttributes.Builder()
@@ -322,8 +360,12 @@ class MainActivity : ComponentActivity() {
             )
             setOnPreparedListener {
                 if (it.duration > 0) playDurMs = it.duration.toLong()
-                it.start()
-                this@MainActivity.isPlaying = true
+                // Continue where the user stopped last time (unless that was the very end).
+                val saved = positions.getLong(rec.id.toString(), 0L)
+                if (saved in 1 until playDurMs - 3000) {
+                    it.seekTo(saved.toInt()); playPosMs = saved
+                }
+                startPlayback(it)
             }
             setOnCompletionListener { this@MainActivity.isPlaying = false; playPosMs = playDurMs }
             setOnErrorListener { _, _, _ ->
@@ -341,14 +383,42 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Starts playing at the chosen speed (pitch stays natural). */
+    private fun startPlayback(p: MediaPlayer) {
+        if (playSpeed != 1f) {
+            // Setting the speed also starts playback.
+            runCatching { p.playbackParams = p.playbackParams.setSpeed(playSpeed).setPitch(1f) }
+                .onFailure { p.start() }
+        } else {
+            p.start()
+        }
+        isPlaying = true
+    }
+
     private fun togglePlay() {
         val p = player ?: return
         if (p.isPlaying) {
             p.pause(); isPlaying = false
+            savePosition()
         } else {
-            if (playPosMs >= playDurMs - 300) p.seekTo(0)
-            p.start(); isPlaying = true
+            if (playPosMs >= playDurMs - 300) { p.seekTo(0); playPosMs = 0 }
+            startPlayback(p)
         }
+    }
+
+    private fun setSpeed(s: Float) {
+        playSpeed = s
+        getSharedPreferences("player", MODE_PRIVATE).edit().putFloat("speed", s).apply()
+        val p = player ?: return
+        if (p.isPlaying) runCatching { p.playbackParams = p.playbackParams.setSpeed(s).setPitch(1f) }
+    }
+
+    private val positions by lazy { getSharedPreferences("positions", MODE_PRIVATE) }
+
+    private fun savePosition() {
+        val rec = nowPlaying ?: return
+        val pos = player?.currentPosition?.toLong() ?: playPosMs
+        positions.edit().putLong(rec.id.toString(), if (pos >= playDurMs - 3000) 0L else pos).apply()
     }
 
     private fun seekTo(ms: Long) {
@@ -359,15 +429,18 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun closePlayer() {
+        if (player != null) savePosition()
         player?.let { runCatching { it.stop() }; it.release() }
         player = null
         nowPlaying = null
         isPlaying = false
+        waveform = null
     }
 
     override fun onStop() {
         super.onStop()
         player?.let { if (it.isPlaying) { it.pause(); isPlaying = false } }
+        savePosition()
     }
 
     override fun onDestroy() {
@@ -402,18 +475,21 @@ class MainActivity : ComponentActivity() {
     // ---------- screen ----------
 
     @Composable
+    private fun ManageDialogs() {
+        renameTarget?.let { rec ->
+            RenameDialog(rec, onConfirm = { renameTarget = null; doRename(rec, it) }, onDismiss = { renameTarget = null })
+        }
+        deleteTarget?.let { rec ->
+            DeleteDialog(rec, onConfirm = { deleteTarget = null; doDelete(rec) }, onDismiss = { deleteTarget = null })
+        }
+    }
+
+    @Composable
     private fun HomeScreen() {
         val status by RecordingState.status.collectAsState()
 
         LaunchedEffect(status.savedCount) { if (status.savedCount > 0) refreshList() }
         LaunchedEffect(status.endMessage) { status.endMessage?.let { infoMessage = it } }
-        LaunchedEffect(isPlaying) {
-            while (isPlaying) {
-                player?.let { playPosMs = it.currentPosition.toLong() }
-                delay(200)
-            }
-        }
-
         Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         LazyColumn(
             Modifier
@@ -548,26 +624,9 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        nowPlaying?.let { rec ->
-            PlayerBar(
-                title = rec.title,
-                isPlaying = isPlaying,
-                positionMs = playPosMs,
-                durationMs = playDurMs,
-                onPlayPause = { togglePlay() },
-                onSeek = { seekTo(it) },
-                onSkip = { seekTo(playPosMs + it) },
-                onClose = { closePlayer() },
-            )
-        }
         }
 
-        renameTarget?.let { rec ->
-            RenameDialog(rec, onConfirm = { renameTarget = null; doRename(rec, it) }, onDismiss = { renameTarget = null })
-        }
-        deleteTarget?.let { rec ->
-            DeleteDialog(rec, onConfirm = { deleteTarget = null; doDelete(rec) }, onDismiss = { deleteTarget = null })
-        }
+        ManageDialogs()
 
         if (askBattery) {
             AlertDialog(
