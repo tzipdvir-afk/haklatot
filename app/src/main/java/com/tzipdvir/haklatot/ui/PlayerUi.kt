@@ -61,6 +61,7 @@ fun PlaybackScreen(
     onSeek: (Long) -> Unit,
     onSkip: (Long) -> Unit,
     onSpeed: (Float) -> Unit,
+    onShare: () -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
     onBack: () -> Unit,
@@ -80,6 +81,7 @@ fun PlaybackScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("→ חזרה לרשימה", fontSize = 17.sp) }
             Spacer(Modifier.weight(1f))
+            TextButton(onClick = onShare) { Text("שתף") }
             TextButton(onClick = onRename) { Text("שנה שם") }
             TextButton(onClick = onDelete) { Text("מחק", color = MaterialTheme.colorScheme.error) }
         }

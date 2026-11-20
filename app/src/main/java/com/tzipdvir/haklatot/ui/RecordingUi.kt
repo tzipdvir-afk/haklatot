@@ -95,7 +95,7 @@ fun PauseButton(paused: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun RecordingRow(rec: Recording, onClick: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
+fun RecordingRow(rec: Recording, onClick: () -> Unit, onShare: () -> Unit, onRename: () -> Unit, onDelete: () -> Unit) {
     var menuOpen by remember { mutableStateOf(false) }
     Card(
         Modifier
@@ -130,6 +130,7 @@ fun RecordingRow(rec: Recording, onClick: () -> Unit, onRename: () -> Unit, onDe
             Box {
                 TextButton(onClick = { menuOpen = true }) { Text("⋮", fontSize = 24.sp, fontWeight = FontWeight.Bold) }
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(text = { Text("שתף", fontSize = 17.sp) }, onClick = { menuOpen = false; onShare() })
                     DropdownMenuItem(text = { Text("שנה שם", fontSize = 17.sp) }, onClick = { menuOpen = false; onRename() })
                     DropdownMenuItem(
                         text = { Text("מחק", fontSize = 17.sp, color = MaterialTheme.colorScheme.error) },
@@ -187,6 +188,23 @@ fun RenameDialog(rec: Recording, onConfirm: (String) -> Unit, onDismiss: () -> U
         text = { OutlinedTextField(value = text, onValueChange = { text = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
         confirmButton = { Button(onClick = { onConfirm(text) }, enabled = text.isNotBlank()) { Text("שמור") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("ביטול") } },
+    )
+}
+
+/** Shown before sharing a large file: Gmail limits attachments to 25 MB. */
+@Composable
+fun LargeShareDialog(rec: Recording, onShare: (dontAskAgain: Boolean) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("קובץ גדול (${formatSize(rec.sizeBytes)})") },
+        text = {
+            Text(
+                "Gmail מאפשר לצרף עד 25MB, ולכן ישלח את ההקלטה כקישור ל-Google Drive.\n\n" +
+                    "וואטסאפ ו-Google Drive מקבלים אותה כרגיל."
+            )
+        },
+        confirmButton = { Button(onClick = { onShare(false) }) { Text("המשך לשיתוף") } },
+        dismissButton = { TextButton(onClick = { onShare(true) }) { Text("הבנתי, אל תציג שוב") } },
     )
 }
 

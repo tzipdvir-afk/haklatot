@@ -15,6 +15,8 @@ import com.tzipdvir.haklatot.ui.NameChooser
 import com.tzipdvir.haklatot.ui.SearchField
 import com.tzipdvir.haklatot.ui.RenameDialog
 import com.tzipdvir.haklatot.ui.DeleteDialog
+import com.tzipdvir.haklatot.ui.LargeShareDialog
+import android.content.ClipData
 import com.tzipdvir.haklatot.ui.formatSize
 import androidx.activity.result.IntentSenderRequest
 import android.os.Environment
@@ -114,6 +116,7 @@ class MainActivity : ComponentActivity() {
     private var freeBytes by mutableStateOf<Long?>(null)
     private var renameTarget by mutableStateOf<Recording?>(null)
     private var deleteTarget by mutableStateOf<Recording?>(null)
+    private var shareTarget by mutableStateOf<Recording?>(null)
 
     // Settings
     private var showSettings by mutableStateOf(false)
@@ -177,6 +180,7 @@ class MainActivity : ComponentActivity() {
                                 onSeek = { seekTo(it) },
                                 onSkip = { seekTo(playPosMs + it) },
                                 onSpeed = { setSpeed(it) },
+                                onShare = { requestShare(open) },
                                 onRename = { renameTarget = open },
                                 onDelete = { deleteTarget = open },
                                 onBack = { closePlayer() },
@@ -230,6 +234,26 @@ class MainActivity : ComponentActivity() {
         RecordingService.start(this, name)
         customName = ""
         nameType = null
+    }
+
+    // ---------- share ----------
+
+    private fun requestShare(rec: Recording) {
+        val skipNote = getSharedPreferences("player", MODE_PRIVATE).getBoolean("skip_large_note", false)
+        if (rec.sizeBytes > LARGE_FILE_BYTES && !skipNote) shareTarget = rec else share(rec)
+    }
+
+    /** Opens Android's share sheet with the original file (no copy; temporary read access only). */
+    private fun share(rec: Recording) {
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("audio/mpeg")
+            .putExtra(Intent.EXTRA_STREAM, rec.uri)
+            .putExtra(Intent.EXTRA_SUBJECT, rec.title)
+            .putExtra(Intent.EXTRA_TITLE, rec.title)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        send.clipData = ClipData.newRawUri(rec.title, rec.uri)
+        runCatching { startActivity(Intent.createChooser(send, "שיתוף: ${rec.title}")) }
+            .onFailure { infoMessage = "לא נמצאה אפליקציה לשיתוף." }
     }
 
     // ---------- rename / delete ----------
@@ -482,6 +506,17 @@ class MainActivity : ComponentActivity() {
         deleteTarget?.let { rec ->
             DeleteDialog(rec, onConfirm = { deleteTarget = null; doDelete(rec) }, onDismiss = { deleteTarget = null })
         }
+        shareTarget?.let { rec ->
+            LargeShareDialog(
+                rec,
+                onShare = { dontAsk ->
+                    if (dontAsk) getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean("skip_large_note", true).apply()
+                    shareTarget = null
+                    share(rec)
+                },
+                onDismiss = { shareTarget = null },
+            )
+        }
     }
 
     @Composable
@@ -607,6 +642,7 @@ class MainActivity : ComponentActivity() {
                 RecordingRow(
                     rec,
                     onClick = { play(rec) },
+                    onShare = { requestShare(rec) },
                     onRename = { renameTarget = rec },
                     onDelete = { deleteTarget = rec },
                 )
@@ -740,5 +776,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    private companion object {
+        /** Gmail's attachment limit. */
+        const val LARGE_FILE_BYTES = 25L * 1000 * 1000
     }
 }
