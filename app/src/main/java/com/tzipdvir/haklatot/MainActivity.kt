@@ -16,6 +16,16 @@ import com.tzipdvir.haklatot.ui.SearchField
 import com.tzipdvir.haklatot.ui.RenameDialog
 import com.tzipdvir.haklatot.ui.DeleteDialog
 import com.tzipdvir.haklatot.ui.LargeShareDialog
+import com.tzipdvir.haklatot.ui.GearButton
+import com.tzipdvir.haklatot.ui.ListHeader
+import com.tzipdvir.haklatot.ui.Navy
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.activity.SystemBarStyle
 import com.tzipdvir.haklatot.data.EventLog
 import android.content.ClipData
 import com.tzipdvir.haklatot.ui.formatSize
@@ -159,7 +169,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        enableEdgeToEdge()
+        // Always-dark design: light status-bar icons on the navy background.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+        )
         setContent {
             HaklatotTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -552,15 +566,14 @@ class MainActivity : ComponentActivity() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                     Spacer(Modifier.height(8.dp))
                     update?.let { UpdateBanner(it, status.recording) }
-                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.fillMaxWidth().padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
                             "ההקלטות שלי",
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 30.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.weight(1f),
                         )
-                        TextButton(onClick = { showSettings = true }) { Text("הגדרות", fontSize = 17.sp) }
+                        GearButton { showSettings = true }
                     }
                     if (!batteryOk && !status.recording) {
                         Card(
@@ -573,20 +586,26 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                     }
-                    Spacer(Modifier.height(12.dp))
+                    Spacer(Modifier.height(14.dp))
                     Text(
                         formatDuration(status.elapsedMs),
-                        fontSize = 46.sp,
-                        fontWeight = FontWeight.Light,
+                        fontSize = 62.sp,
+                        fontWeight = FontWeight.Bold,
                         color = if (status.recording && !status.paused) RecordRed else MaterialTheme.colorScheme.onBackground,
                     )
                     val stateLine = when {
                         !status.recording -> null
-                        status.paused -> "ההקלטה מושהית"
+                        status.paused -> "ההקלטה מושהית · ${status.name}"
                         status.silencedByCall -> "המיקרופון מושתק בגלל שיחה – ההקלטה תמשיך אוטומטית אחריה"
-                        else -> "מקליט…"
+                        else -> "מקליט · ${status.name}"
                     }
-                    stateLine?.let { Text(it, fontSize = 16.sp, textAlign = TextAlign.Center) }
+                    Row(Modifier.height(24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (status.recording && !status.paused) {
+                            Box(Modifier.size(10.dp).clip(CircleShape).background(RecordRed))
+                            Spacer(Modifier.width(8.dp))
+                        }
+                        stateLine?.let { Text(it, fontSize = 16.sp, color = Navy.Mute, textAlign = TextAlign.Center) }
+                    }
                     LevelMeter(status.levels, status.recording && !status.paused, Modifier.padding(vertical = 8.dp))
                     if (status.silenceWarning) {
                         Card(
@@ -600,9 +619,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     status.warning?.let { if (status.recording) Text(it, fontSize = 15.sp, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center) }
-                    if (status.recording) {
-                        Text("שם: ${status.name}", fontSize = 15.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.75f))
-                    } else {
+                    if (!status.recording) {
                         NameChooser(nameType, customName, onType = { nameType = it }, onCustomName = { customName = it })
                     }
                     Spacer(Modifier.height(10.dp))
@@ -627,24 +644,8 @@ class MainActivity : ComponentActivity() {
                             Text(it, Modifier.padding(14.dp), fontSize = 16.sp, textAlign = TextAlign.Start)
                         }
                     }
-                    Spacer(Modifier.height(18.dp))
-                    Text(
-                        if (recordings.isEmpty()) "עדיין אין הקלטות" else "כל ההקלטות (${recordings.size})",
-                        fontSize = 19.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    if (recordings.isNotEmpty()) {
-                        Text(
-                            "סה\"כ ${formatSize(recordings.sumOf { it.sizeBytes })}" +
-                                (freeBytes?.let { " · נשארו ${formatSize(it)} פנויים בטלפון" } ?: ""),
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(6.dp))
-                        SearchField(query) { query = it }
-                    }
+                    ListHeader(recordings.size, recordings.sumOf { it.sizeBytes }, freeBytes)
+                    if (recordings.size > 3) SearchField(query) { query = it }
                     Spacer(Modifier.height(4.dp))
                 }
             }

@@ -1,6 +1,13 @@
 package com.tzipdvir.haklatot.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.unit.Dp
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -79,21 +86,18 @@ fun PlaybackScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("→ חזרה לרשימה", fontSize = 17.sp) }
+            TextButton(onClick = onBack) { Text("→ חזרה", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Navy.Accent) }
             Spacer(Modifier.weight(1f))
-            TextButton(onClick = onShare) { Text("שתף") }
-            TextButton(onClick = onRename) { Text("שנה שם") }
-            TextButton(onClick = onDelete) { Text("מחק", color = MaterialTheme.colorScheme.error) }
         }
-        Spacer(Modifier.height(12.dp))
-        Text(rec.title, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(18.dp))
+        Text(rec.title, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
         Spacer(Modifier.height(4.dp))
         Text(
-            "${formatDate(rec.dateMillis)}  ·  ${formatDuration(durationMs)}  ·  ${formatSize(rec.sizeBytes)}",
+            "${formatDate(rec.dateMillis)} · ${formatDuration(durationMs)} · ${formatSize(rec.sizeBytes)}",
             fontSize = 15.sp,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            color = Navy.Mute,
         )
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(34.dp))
 
         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -113,34 +117,54 @@ fun PlaybackScreen(
                         )
                     }
                 }
-                Row(Modifier.fillMaxWidth().padding(top = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(formatDuration(shownPos), fontSize = 16.sp, fontWeight = FontWeight.Medium)
-                    Text(formatDuration(durationMs), fontSize = 16.sp)
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(formatDuration(shownPos), fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                    Text(formatDuration(durationMs), fontSize = 17.sp, color = Navy.Mute)
                 }
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(30.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedButton(onClick = { onSkip(-15_000) }) { Text("15 שנ׳ ↶", fontSize = 16.sp) }
-                    FilledIconButton(
-                        onClick = onPlayPause,
-                        shape = CircleShape,
-                        modifier = Modifier.padding(horizontal = 20.dp).size(80.dp),
-                    ) { PlayPauseIcon(isPlaying, Color.White) }
-                    OutlinedButton(onClick = { onSkip(15_000) }) { Text("↷ 15 שנ׳", fontSize = 16.sp) }
-                }
-                Spacer(Modifier.height(28.dp))
-                Text("מהירות", fontSize = 15.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SPEEDS.forEach { s ->
-                        FilterChip(
-                            selected = s == speed,
-                            onClick = { onSpeed(s) },
-                            label = { Text(formatSpeed(s), fontSize = 16.sp) },
-                        )
+                    RoundIconButton(64.dp, Navy.Surface, onClick = { onSkip(-15_000) }) {
+                        Text("−15", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Navy.Ink)
                     }
+                    Spacer(Modifier.width(26.dp))
+                    RoundIconButton(92.dp, Navy.Accent, onClick = onPlayPause) { PlayPauseIcon(isPlaying, Navy.AccentInk) }
+                    Spacer(Modifier.width(26.dp))
+                    RoundIconButton(64.dp, Navy.Surface, onClick = { onSkip(15_000) }) {
+                        Text("+15", fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, color = Navy.Ink)
+                    }
+                }
+                Spacer(Modifier.height(32.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SPEEDS.forEach { s -> AppChip(formatSpeed(s), selected = s == speed) { onSpeed(s) } }
                 }
             }
         }
+        Spacer(Modifier.height(30.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            ActionPill("שתף", Navy.Ink, onShare)
+            ActionPill("שנה שם", Navy.Ink, onRename)
+            ActionPill("מחק", Navy.Rec, onDelete)
+        }
     }
+}
+
+@Composable
+private fun RoundIconButton(size: Dp, color: Color, onClick: () -> Unit, content: @Composable () -> Unit) {
+    Box(
+        Modifier.size(size).clip(CircleShape).background(color).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { content() }
+}
+
+@Composable
+private fun ActionPill(text: String, color: Color, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.5.dp, Navy.Line, RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp, vertical = 9.dp),
+    ) { Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = color) }
 }
 
 fun formatSpeed(s: Float): String =
@@ -155,9 +179,9 @@ private fun Waveform(
     onDragEnd: () -> Unit,
     onTap: (Float) -> Unit,
 ) {
-    val played = MaterialTheme.colorScheme.primary
-    val rest = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f)
-    val cursor = MaterialTheme.colorScheme.secondary
+    val played = Navy.Accent
+    val rest = Navy.Line
+    val cursor = Navy.Ink
     Canvas(
         Modifier
             .fillMaxSize()

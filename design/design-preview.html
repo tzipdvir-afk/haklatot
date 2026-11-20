@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>עיצוב ההקלטות שלי</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Assistant:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { margin:0; background:#e9ebef; font-family:"Assistant", system-ui, sans-serif; color:#111; }
+  header { padding:22px 16px 6px; text-align:center; }
+  header h1 { margin:0 0 4px; font-size:26px; }
+  header p { margin:0; color:#555; font-size:16px; }
+  .tabs { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; padding:14px 16px; }
+  .tabs button { font:inherit; font-size:17px; font-weight:700; border:2px solid #c9ccd3; background:#fff; border-radius:999px; padding:8px 18px; cursor:pointer; }
+  .tabs button.on { border-color:#111; background:#111; color:#fff; }
+  .desc { text-align:center; max-width:640px; margin:0 auto 6px; padding:0 16px; font-size:16px; color:#333; min-height:44px; }
+  .row { display:flex; flex-wrap:wrap; gap:22px; justify-content:center; padding:10px 16px 40px; }
+  .cap { text-align:center; font-weight:700; margin-top:8px; color:#333; }
+
+  /* ---------- palettes ---------- */
+  .phone[data-p="studio"] { --bg:#111317; --surf:#1B1E24; --surf2:#252932; --ink:#F2F3F5; --mute:#9AA1AD; --rec:#FF4747; --acc:#FFB21E; --accInk:#1A1200; --chip:#2C313B; --line:#2E333D; }
+  .phone[data-p="navy"]   { --bg:#0A1430; --surf:#122150; --surf2:#1A2C63; --ink:#F3F6FF; --mute:#9DB0DA; --rec:#FF5A3C; --acc:#F59A2E; --accInk:#2A1400; --chip:#1E3270; --line:#22377A; }
+  .phone[data-p="crisp"]  { --bg:#F4F5F7; --surf:#FFFFFF; --surf2:#EEF0F3; --ink:#0D1117; --mute:#5D6573; --rec:#E0261F; --acc:#074C9F; --accInk:#FFFFFF; --chip:#E6E9EE; --line:#DADDE3; }
+
+  .phone { width:340px; height:720px; border-radius:38px; background:var(--bg); color:var(--ink); box-shadow:0 18px 40px rgba(0,0,0,.25), inset 0 0 0 9px #0b0b0c; padding:22px 20px; box-sizing:border-box; overflow:hidden; position:relative; display:flex; flex-direction:column; }
+  .status { display:flex; justify-content:space-between; font-size:13px; color:var(--mute); padding:0 6px 10px; }
+  .top { display:flex; align-items:center; justify-content:space-between; }
+  .top h2 { margin:0; font-size:27px; font-weight:800; letter-spacing:-.3px; }
+  .gear { width:36px; height:36px; border-radius:12px; background:var(--surf); display:flex; align-items:center; justify-content:center; }
+  .gear svg { width:20px; height:20px; fill:var(--mute); }
+  .timer { text-align:center; font-size:58px; font-weight:700; margin:18px 0 0; font-variant-numeric:tabular-nums; letter-spacing:1px; }
+  .timer.rec { color:var(--rec); }
+  .state { text-align:center; font-size:16px; color:var(--mute); height:22px; display:flex; align-items:center; justify-content:center; gap:7px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--rec); box-shadow:0 0 0 4px color-mix(in srgb, var(--rec) 25%, transparent); }
+  .meter { height:64px; display:flex; align-items:center; gap:3px; margin:10px 0 6px; }
+  .meter i { flex:1; border-radius:3px; background:var(--line); }
+  .meter.on i { background:var(--rec); }
+  .chips { display:flex; gap:8px; justify-content:center; margin:8px 0; }
+  .chips span { background:var(--chip); border-radius:10px; padding:6px 14px; font-weight:600; font-size:15px; }
+  .chips span.sel { background:var(--acc); color:var(--accInk); }
+  .name { background:var(--surf); border:1px solid var(--line); border-radius:12px; padding:9px 12px; color:var(--mute); font-size:15px; }
+  .big { width:112px; height:112px; border-radius:50%; margin:18px auto 8px; display:flex; align-items:center; justify-content:center; background:var(--rec); box-shadow:0 10px 26px color-mix(in srgb, var(--rec) 45%, transparent), 0 0 0 8px color-mix(in srgb, var(--rec) 16%, transparent); }
+  .big svg { width:46px; height:46px; fill:#fff; }
+  .big .sq { width:36px; height:36px; border-radius:8px; background:#fff; }
+  .pause { margin:6px auto 0; border:2px solid var(--line); border-radius:999px; padding:8px 26px; font-weight:700; font-size:17px; width:max-content; display:flex; gap:8px; align-items:center; }
+  .pause b { width:4px; height:14px; background:var(--ink); display:inline-block; border-radius:1px; box-shadow:7px 0 0 var(--ink); margin-left:9px; }
+  .listhead { display:flex; justify-content:space-between; align-items:baseline; margin:16px 2px 8px; }
+  .listhead b { font-size:19px; }
+  .listhead span { font-size:14px; color:var(--mute); }
+  .card { background:var(--surf); border-radius:16px; padding:12px 14px; display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .card .t { flex:1; min-width:0; }
+  .card .t b { display:block; font-size:16.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .card .t span { font-size:13.5px; color:var(--mute); }
+  .card .d { font-weight:700; font-variant-numeric:tabular-nums; font-size:16px; }
+  .card .k { color:var(--mute); font-size:22px; line-height:1; padding:0 2px; }
+  .ic { width:34px; height:34px; border-radius:10px; background:var(--surf2); display:flex; align-items:center; justify-content:center; flex:none; }
+  .ic svg { width:16px; height:16px; fill:var(--acc); }
+  .fade { position:absolute; left:0; right:0; bottom:0; height:60px; background:linear-gradient(transparent, var(--bg)); border-radius:0 0 38px 38px; }
+
+  .back { font-size:16px; color:var(--mute); font-weight:600; display:flex; justify-content:space-between; }
+  .back span { color:var(--acc); }
+  .ptitle { text-align:center; font-size:24px; font-weight:800; margin:22px 0 4px; }
+  .pmeta { text-align:center; color:var(--mute); font-size:15px; }
+  .wave { height:120px; display:flex; align-items:center; gap:2px; margin:34px 0 8px; direction:ltr; position:relative; }
+  .wave i { flex:1; border-radius:2px; background:var(--line); }
+  .wave i.p { background:var(--acc); }
+  .cursor { position:absolute; top:0; bottom:0; width:3px; background:var(--ink); border-radius:2px; }
+  .times { display:flex; justify-content:space-between; direction:ltr; font-variant-numeric:tabular-nums; font-weight:600; }
+  .ctrl { display:flex; align-items:center; justify-content:center; gap:22px; margin:30px 0 26px; direction:ltr; }
+  .skip { width:58px; height:58px; border-radius:50%; background:var(--surf); display:flex; align-items:center; justify-content:center; font-weight:800; font-size:15px; }
+  .play { width:84px; height:84px; border-radius:50%; background:var(--acc); display:flex; align-items:center; justify-content:center; }
+  .play i { width:8px; height:30px; background:var(--accInk); border-radius:2px; box-shadow:15px 0 0 var(--accInk); margin-right:15px; }
+  .speeds { display:flex; justify-content:center; gap:8px; direction:ltr; }
+  .speeds span { background:var(--chip); border-radius:10px; padding:7px 14px; font-weight:700; }
+  .speeds span.sel { background:var(--acc); color:var(--accInk); }
+  .pact { display:flex; justify-content:center; gap:10px; margin-top:24px; }
+  .pact span { border:1.5px solid var(--line); border-radius:12px; padding:8px 16px; font-weight:600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>שלושה כיווני עיצוב – "מקצועי וחזק"</h1>
+  <p>בחר כיוון. בכל כיוון: מסך הבית, מסך בזמן הקלטה, ומסך השמעה. גופן: Assistant.</p>
+</header>
+<div class="tabs">
+  <button data-p="studio" class="on">א. סטודיו</button>
+  <button data-p="navy">ב. כחול לילה</button>
+  <button data-p="crisp">ג. בהיר וחד</button>
+</div>
+<div class="desc" id="desc"></div>
+<div class="row" id="row"></div>
+
+<template id="screens">
+  <div>
+    <div class="phone">
+      <div class="status"><span>10:29</span><span>87%</span></div>
+      <div class="top"><h2>ההקלטות שלי</h2><div class="gear"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></div></div>
+      <div class="timer">0:00</div>
+      <div class="state"></div>
+      <div class="meter flat"></div>
+      <div class="chips"><span class="sel">שיעור</span><span>פגישה</span><span>הרצאה</span></div>
+      <div class="name">שם להקלטה (לא חובה)</div>
+      <div class="big">MIC</div>
+      <div class="listhead"><b>כל ההקלטות (12)</b><span><bdi>340 MB</bdi> · <bdi>48 GB</bdi> פנויים</span></div>
+      <div class="card"><div class="ic">PLAY</div><div class="t"><b>שיעור – 19.11.2026 – 18.02</b><span>19.11 · <bdi>26.1 MB</bdi></span></div><div class="d">56:55</div><div class="k">⋮</div></div>
+      <div class="card"><div class="ic">PLAY</div><div class="t"><b>פגישה – 18.11.2026 – 09.30</b><span>18.11 · <bdi>11.4 MB</bdi></span></div><div class="d">24:48</div><div class="k">⋮</div></div>
+      <div class="fade"></div>
+    </div>
+    <div class="cap">מסך הבית</div>
+  </div>
+  <div>
+    <div class="phone">
+      <div class="status"><span>10:47</span><span>81%</span></div>
+      <div class="top"><h2>ההקלטות שלי</h2><div class="gear"><svg viewBox="0 0 24 24"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.4 7.4 0 0 0-1.7-1L15 3.3h-4l-.4 2.7a7.4 7.4 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.6 7.6 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1a7.4 7.4 0 0 0 1.7 1l.4 2.7h4l.4-2.7a7.4 7.4 0 0 0 1.7-1l2.5 1 2-3.4zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z" transform="translate(-1 0)"/></svg></div></div>
+      <div class="timer rec">17:42</div>
+      <div class="state"><span class="dot"></span>מקליט · שיעור</div>
+      <div class="meter on live"></div>
+      <div class="big"><div class="sq"></div></div>
+      <div class="pause"><b></b>השהה</div>
+      <div class="listhead"><b>כל ההקלטות (12)</b><span><bdi>340 MB</bdi></span></div>
+      <div class="card"><div class="ic">PLAY</div><div class="t"><b>שיעור – 19.11.2026 – 18.02</b><span>19.11 · <bdi>26.1 MB</bdi></span></div><div class="d">56:55</div><div class="k">⋮</div></div>
+      <div class="fade"></div>
+    </div>
+    <div class="cap">בזמן הקלטה</div>
+  </div>
+  <div>
+    <div class="phone">
+      <div class="status"><span>20:15</span><span>64%</span></div>
+      <div class="back"><span>→ חזרה</span><span></span></div>
+      <div class="ptitle">שיעור – 19.11.2026 – 18.02</div>
+      <div class="pmeta">19.11.2026 · 56:55 · <bdi>26.1 MB</bdi></div>
+      <div class="wave"></div>
+      <div class="times"><span>21:34</span><span>56:55</span></div>
+      <div class="ctrl"><div class="skip" dir="ltr">−15</div><div class="play"><i></i></div><div class="skip" dir="ltr">+15</div></div>
+      <div class="speeds"><span>1x</span><span class="sel">1.25x</span><span>1.5x</span><span>2x</span></div>
+      <div class="pact"><span>שתף</span><span>שנה שם</span><span>מחק</span></div>
+    </div>
+    <div class="cap">מסך השמעה</div>
+  </div>
+</template>
+
+<script>
+  const DESC = {
+    studio: "רקע כמעט שחור, אדום חזק להקלטה וצהוב-ענבר להשמעה. נראה כמו מכשיר הקלטה מקצועי. כהה תמיד – נוח גם בכיתה חשוכה.",
+    navy: "כחול כהה עמוק עם כתום – אותם צבעים כמו באייקון, בגרסה כהה ובוגרת. האפליקציה והאייקון מרגישים כמו משפחה אחת.",
+    crisp: "רקע בהיר, טקסט שחור חד, אדום להקלטה וכחול האייקון להשמעה. נקי, קריא מאוד באור יום. (יש לו גם גרסה כהה למצב לילה.)"
+  };
+  const MIC = '<svg viewBox="0 0 24 24"><path d="M12 2a3.5 3.5 0 0 0-3.5 3.5v6a3.5 3.5 0 0 0 7 0v-6A3.5 3.5 0 0 0 12 2zm-6.5 9.2a1 1 0 0 1 2 0 4.5 4.5 0 0 0 9 0 1 1 0 0 1 2 0 6.5 6.5 0 0 1-5.5 6.4V20h2.5a1 1 0 0 1 0 2h-7a1 1 0 0 1 0-2H11v-2.4a6.5 6.5 0 0 1-5.5-6.4z"/></svg>';
+  const PLAY = '<svg viewBox="0 0 24 24"><path d="M7 4.5v15a1 1 0 0 0 1.5.9l12-7.5a1 1 0 0 0 0-1.8l-12-7.5A1 1 0 0 0 7 4.5z"/></svg>';
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+
+  function render(p) {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.p === p));
+    document.getElementById('desc').textContent = DESC[p];
+    const row = document.getElementById('row');
+    row.innerHTML = document.getElementById('screens').innerHTML.replaceAll('>MIC<', '>' + MIC + '<').replaceAll('>PLAY<', '>' + PLAY + '<');
+    row.querySelectorAll('.phone').forEach(ph => ph.dataset.p = p);
+    seed = 7;
+    row.querySelectorAll('.meter').forEach(m => {
+      for (let i = 0; i < 44; i++) {
+        const h = m.classList.contains('live') ? 8 + Math.pow(rnd(), 1.6) * 56 : 4;
+        m.insertAdjacentHTML('beforeend', `<i style="height:${h}px"></i>`);
+      }
+    });
+    row.querySelectorAll('.wave').forEach(w => {
+      const n = 70, played = 26;
+      for (let i = 0; i < n; i++) {
+        const quiet = (i > 40 && i < 46);
+        const h = quiet ? 4 + rnd() * 8 : 18 + Math.pow(rnd(), 1.3) * 100;
+        w.insertAdjacentHTML('beforeend', `<i class="${i < played ? 'p' : ''}" style="height:${h}px"></i>`);
+      }
+      w.insertAdjacentHTML('beforeend', `<div class="cursor" style="left:${played / n * 100}%"></div>`);
+    });
+  }
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => render(b.dataset.p));
+  render('studio');
+</script>
+</body>
+</html>
