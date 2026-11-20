@@ -38,6 +38,7 @@ fun SettingsScreen(
     onAutoStop: (Boolean) -> Unit,
     onBatteryRequest: () -> Unit,
     onOpenAppSettings: () -> Unit,
+    onShareLog: () -> Unit,
     onBack: () -> Unit,
 ) {
     Column(
@@ -107,6 +108,16 @@ fun SettingsScreen(
             fontSize = 14.sp,
         )
         OutlinedButton(onClick = onOpenAppSettings) { Text("פתח את הגדרות האפליקציה בטלפון") }
+
+        HorizontalDivider()
+
+        Text("יומן אירועים (לאבחון תקלות)", fontSize = 19.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            "האפליקציה רושמת שעות ואירועים: התחלה, עצירה, השהיה, שיחות, אזהרות ותקלות. " +
+                "בלי תוכן ההקלטות ובלי השמות שלהן. אם משהו לא עבד – שלח את היומן.",
+            fontSize = 14.sp,
+        )
+        OutlinedButton(onClick = onShareLog) { Text("שלח יומן") }
         Spacer(Modifier.height(24.dp))
     }
 }

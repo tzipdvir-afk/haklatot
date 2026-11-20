@@ -16,6 +16,7 @@ import com.tzipdvir.haklatot.ui.SearchField
 import com.tzipdvir.haklatot.ui.RenameDialog
 import com.tzipdvir.haklatot.ui.DeleteDialog
 import com.tzipdvir.haklatot.ui.LargeShareDialog
+import com.tzipdvir.haklatot.data.EventLog
 import android.content.ClipData
 import com.tzipdvir.haklatot.ui.formatSize
 import androidx.activity.result.IntentSenderRequest
@@ -150,7 +151,10 @@ class MainActivity : ComponentActivity() {
         if (!RecordingState.status.value.recording) {
             lifecycleScope.launch {
                 val n = withContext(Dispatchers.IO) { runCatching { store.recoverUnfinished() }.getOrDefault(0) }
-                if (n > 0) infoMessage = "הקלטה שנקטעה באמצע נשמרה עד נקודת העצירה. היא מסומנת ברשימה."
+                if (n > 0) {
+                    EventLog.add("שוחזרו $n הקלטות שנקטעו (קריסה / כיבוי / סגירה בכוח)")
+                    infoMessage = "הקלטה שנקטעה באמצע נשמרה עד נקודת העצירה. היא מסומנת ברשימה."
+                }
                 refreshList()
             }
         }
@@ -200,6 +204,7 @@ class MainActivity : ComponentActivity() {
                                 onAutoStop = { autoStop = it; settings.autoStopOnSilence = it },
                                 onBatteryRequest = { requestBatteryExemption() },
                                 onOpenAppSettings = { openAppSettings() },
+                                onShareLog = { shareLog() },
                                 onBack = { showSettings = false },
                             )
                         }
@@ -254,6 +259,17 @@ class MainActivity : ComponentActivity() {
         send.clipData = ClipData.newRawUri(rec.title, rec.uri)
         runCatching { startActivity(Intent.createChooser(send, "שיתוף: ${rec.title}")) }
             .onFailure { infoMessage = "לא נמצאה אפליקציה לשיתוף." }
+    }
+
+    /** Sends the diagnostic diary as plain text (times and events only). */
+    private fun shareLog() {
+        val header = "יומן אירועים – ההקלטות שלי ${BuildConfig.VERSION_NAME}, ${Build.MANUFACTURER} ${Build.MODEL}, אנדרואיד ${Build.VERSION.RELEASE}\n\n"
+        val body = EventLog.read().lines().takeLast(400).joinToString("\n")
+        val send = Intent(Intent.ACTION_SEND)
+            .setType("text/plain")
+            .putExtra(Intent.EXTRA_SUBJECT, "יומן אירועים – ההקלטות שלי")
+            .putExtra(Intent.EXTRA_TEXT, header + body.ifBlank { "(היומן ריק)" })
+        runCatching { startActivity(Intent.createChooser(send, "שליחת היומן")) }
     }
 
     // ---------- rename / delete ----------

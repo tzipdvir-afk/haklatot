@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import com.tzipdvir.haklatot.MainActivity
 import com.tzipdvir.haklatot.R
 import com.tzipdvir.haklatot.data.RecordingMeta
+import com.tzipdvir.haklatot.data.EventLog
 import com.tzipdvir.haklatot.data.RecordingMetaStore
 import com.tzipdvir.haklatot.data.RecordingsStore
 import com.tzipdvir.haklatot.data.StopReason
@@ -77,7 +78,7 @@ class RecordingService : Service() {
             ACTION_PAUSE -> setPaused(true)
             ACTION_RESUME -> setPaused(false)
             ACTION_KEEP_GOING -> keepGoing()
-            else -> if (!running) stopSelf() // restarted by the system: never record on its own
+            else -> if (!running) { EventLog.add("השירות הופעל מחדש על ידי המערכת – לא מקליט"); stopSelf() }
         }
         // NOT_STICKY: Android must not restart us by itself (it may not record from the background anyway).
         return START_NOT_STICKY
@@ -107,6 +108,7 @@ class RecordingService : Service() {
 
         registerSystemEvents()
         val bitrate = RecorderSettings(this).bitrateKbps
+        EventLog.add("התחלת הקלטה ($bitrate kbps, סוללה ${batteryPercent()}%, חיסכון סוללה: ${if (isBatteryExempt()) "פטור" else "לא פטור"})")
         thread = Thread({ recordLoop(bitrate, baseName) }, "recorder").apply {
             priority = Thread.MAX_PRIORITY
             start()
@@ -115,6 +117,7 @@ class RecordingService : Service() {
 
     private fun requestStop(reason: StopReason) {
         if (!running) { shutdown(); return }
+        EventLog.add("בקשת עצירה: ${reason.name}")
         stopReason = reason
         running = false // the loop finishes the file and then calls shutdown()
     }
@@ -122,6 +125,7 @@ class RecordingService : Service() {
     private fun setPaused(p: Boolean) {
         if (!running || paused == p) return
         paused = p
+        EventLog.add(if (p) "השהיה" else "המשך אחרי השהיה")
         resetSilence = true
         RecordingState.update { it.copy(paused = p, silenceWarning = false) }
         nm.cancel(ALERT_ID)
@@ -129,6 +133,7 @@ class RecordingService : Service() {
     }
 
     private fun keepGoing() {
+        EventLog.add("נלחץ 'המשך להקליט' אחרי אזהרת שקט")
         resetSilence = true
         RecordingState.update { it.copy(silenceWarning = false) }
         nm.cancel(ALERT_ID)
@@ -143,6 +148,7 @@ class RecordingService : Service() {
     }
 
     override fun onDestroy() {
+        if (running) EventLog.add("השירות נסגר בזמן הקלטה – סוגר את הקובץ")
         running = false
         thread?.join(3000)
         unregisterSystemEvents()
@@ -194,12 +200,17 @@ class RecordingService : Service() {
                         var blockMaxDb = -100.0
                         var silentMs = 0L
                         var warned = false
+                        var lastRead = 0L
+                        var lastHeartbeat = 0L
                         try {
                             while (running) {
                                 val n = record.read(pcm, 0, pcm.size)
                                 if (n < 0) throw IllegalStateException("שגיאת מיקרופון ($n)")
                                 if (n == 0) continue
                                 val now = SystemClock.elapsedRealtime()
+                                // A long gap between reads may mean the system froze us (audio lost if > ~2 s).
+                                if (lastRead > 0 && now - lastRead > 1500) EventLog.add("פער בקריאה מהמיקרופון: ${now - lastRead} ms")
+                                lastRead = now
 
                                 if (resetSilence) {
                                     resetSilence = false; silentMs = 0; warned = false
@@ -249,6 +260,12 @@ class RecordingService : Service() {
                                     blockSamples = 0; blockMaxDb = -100.0
                                 }
 
+                                // Heartbeat in the diary every 10 minutes of recording.
+                                if (elapsedMs - lastHeartbeat >= 10 * 60_000) {
+                                    lastHeartbeat = elapsedMs
+                                    EventLog.add("מקליט: ${formatClock(elapsedMs)} (סוללה ${batteryPercent()}%)")
+                                }
+
                                 // --- free storage, every 30 s ---
                                 if (now - lastStorageCheck >= 30_000) {
                                     lastStorageCheck = now
@@ -274,11 +291,13 @@ class RecordingService : Service() {
             }
         } catch (t: Throwable) {
             Log.e(TAG, "Recording failed", t)
+            EventLog.add("תקלה בהקלטה: ${t.javaClass.simpleName}: ${t.message}")
             errorText = t.message ?: "שגיאה בהקלטה"
             stopReason = StopReason.ERROR
         } finally {
             uri?.let { runCatching { store.finish(it) } }
             val reason = stopReason
+            EventLog.add("ההקלטה נסגרה ונשמרה: ${formatClock(elapsedMs)}, סיבה: ${reason.name}, רעש רקע: ${noiseFloor(noiseHistogram) ?: "-"} dB")
             if (id >= 0) {
                 runCatching {
                     metaStore.put(id, RecordingMeta(bitrateKbps = bitrate, noiseDb = noiseFloor(noiseHistogram), stopReason = reason))
@@ -326,6 +345,7 @@ class RecordingService : Service() {
     // ---------- warnings ----------
 
     private fun showSilenceWarning() {
+        EventLog.add("אזהרת שקט: 5 דקות בלי קול")
         RecordingState.update { it.copy(silenceWarning = true) }
         showAlert("לא נקלט קול 5 דקות. ההקלטה תיעצר ותישמר בעוד דקה.", withKeepGoing = true)
     }
@@ -343,6 +363,7 @@ class RecordingService : Service() {
             }
             free < RecorderSettings.STORAGE_WARN_BYTES && !storageWarned -> {
                 storageWarned = true
+                EventLog.add("אזהרה: מקום פנוי נמוך (${free / 1024 / 1024} MB)")
                 val msg = "נשאר מעט מקום בטלפון. אם ייגמר, ההקלטה תיעצר ותישמר."
                 RecordingState.update { it.copy(warning = msg) }
                 showAlert(msg, withKeepGoing = false)
@@ -366,6 +387,7 @@ class RecordingService : Service() {
                         requestStop(StopReason.BATTERY)
                     } else if (pct <= 15 && !batteryWarned) {
                         batteryWarned = true
+                        EventLog.add("אזהרה: סוללה חלשה ($pct%)")
                         val msg = "הסוללה חלשה ($pct%). ההקלטה ממשיכה; ב-${RecorderSettings.BATTERY_STOP_PERCENT}% היא תיעצר ותישמר אוטומטית."
                         RecordingState.update { it.copy(warning = msg) }
                         showAlert(msg, withKeepGoing = false)
@@ -383,6 +405,7 @@ class RecordingService : Service() {
             val silenced = mine.isClientSilenced
             if (silenced != silencedByCall) {
                 silencedByCall = silenced
+                EventLog.add(if (silenced) "המיקרופון הושתק (שיחה)" else "המיקרופון חזר לפעול אחרי שיחה")
                 RecordingState.update { it.copy(silencedByCall = silenced) }
                 refreshOngoingNotification()
             }
@@ -483,6 +506,12 @@ class RecordingService : Service() {
         this, requestCode, Intent(this, RecordingService::class.java).setAction(action),
         PendingIntent.FLAG_IMMUTABLE,
     )
+
+    private fun batteryPercent(): Int =
+        getSystemService(BatteryManager::class.java).getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+
+    private fun isBatteryExempt(): Boolean =
+        getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
 
     private fun formatClock(ms: Long): String {
         val t = ms / 1000
